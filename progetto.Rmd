@@ -15,14 +15,22 @@ BiocManager::install("curatedTCGAData");
 BiocManager::install("TCGAbiolinks");
 BiocManager::install("TCGAutils");
 
+install.packages("SNFtool");
+install.packages("NetPreProc");
 install.packages("caret");
+install.packages("cluster");
+install.packages("mclustcomp");
 ```
 
 ```{r}
 library("curatedTCGAData")
 library("TCGAbiolinks");
 library("TCGAutils");
+library("NetPreProc");
 library("caret");
+library("cluster"); #pam
+library("SNFtool");
+library("mclustcomp");
 ```
 
 ```{r}
@@ -155,7 +163,7 @@ W_int <- SNF(W_list, K=20, t=20);
 6.  Try to integrate the similarity matrices from each data source (computed by scaled exponential euclidean distance) using a simple average of the matrices. This can be considered as a trivial multi-omics data integration strategy.
 
 ```{r}
-W_averages <- Reduce(`+`, complete) / length(complete)
+W_averages <- Reduce(`+`, W_list) / length(W_list)
 ```
 
 7.  [GROUP] Integrate the dataset using another data fusion method called NEMO [4] to obtain an integrated similarity matrix. NEMO implementation is available on github (<https://github.com/ShamirLab/NEMO>).
@@ -166,15 +174,39 @@ W_averages <- Reduce(`+`, complete) / length(complete)
 
 8.  Perform disease subtype discovery (number of clusters equal to the number of disease subtypes found by iCluster) using PAM algorithm [5] on the following similarity matrices:
 
-<!-- -->
-
 a.  Similarity matrices obtained from single data sources (i.e. miRNA, mRNA, proteins) using the usual scaled exponential euclidean distance. Thus, you should obtain three different similarity matrices. To compute the corresponding distance matrix use this code: dist \<- 1 - NetPreProc::Max.Min.norm(W). Max.Min.norm() function is in the NetPreProc CRAN package (<https://cran.r-project.org/web/packages/NetPreProc/index.html>). The idea is to normalize the similarity matrix before computing the corresponding distance.
 b.  Integrated matrix obtained using the average among matrices. Use dist \<- 1 - NetPreProc::Max.Min.norm(W) to compute the distance matrix.
 c.  Integrated matrix obtained using Similarity Network Fusion. Use dist \<- 1 - NetPreProc::Max.Min.norm(W) to compute the distance matrix.
 d.  [GROUP] Integrated matrix obtained using NEMO. Use dist \<- 1 - NetPreProc::Max.Min.norm(W) to compute the distance matrix.
 
 ```{r}
+#Get the number of clusters for PAM equal to the number of unique subtypes
+n_of_clusters <- length(unique(subtypes$Subtype_Selected))
 
+PAM.compute <- function(similarity_matrix, k) {
+  #We obtain the normalized distance matrix form the similarity matrix of the i-th assay
+  distances <- as.dist(1 - NetPreProc::Max.Min.norm(similarity_matrix))
+  #We compute and return the PAM Clustering for the i-th assay
+  pam(distances, k=n_of_clusters)
+}
+
+# PAM clustering for each assay
+pam_results <- list();
+pam_next_count <- 1;
+for(i in 1:length(W_list)) {
+  pam_results[[pam_next_count]] <- PAM.compute(W_list[[i]], n_of_clusters)
+  pam_next_count <- pam_next_count + 1;
+}
+
+# PAM clustering for average matrix of the assays
+pam_results[[pam_next_count]] <- PAM.compute(W_averages, n_of_clusters)
+pam_next_count <- pam_next_count + 1;
+
+  # PAM clustering of the SNF integration matrix
+pam_results[[pam_next_count]] <- PAM.compute(W_int, n_of_clusters)
+pam_next_count <- pam_next_count + 1;
+
+#TODO: [Group] PAM clustering
 ```
 
 9.  [GROUP] NEMO provides the possibility of performing clustering using another approach called Spectral Clustering [6]. Use the function nemo.clustering() to test this approach.
@@ -186,16 +218,10 @@ d.  [GROUP] Integrated matrix obtained using NEMO. Use dist \<- 1 - NetPreProc::
 10. [OPTIONAL] Apply Spectral Clustering on the integrated matrix obtained using Similarity Network Fusion (an implementation of spectral clustering is SNFtool::spectralClustering(), which is the same exploited in nemo.clustering()).
 
 ```{r}
-
+SNF_spectral_clustering <- SNFtool::spectralClustering(W_int, K=n_of_clusters)
 ```
 
 11. Compare the clusterings obtained by each considered approach w.r.t. the iCluster disease subtypes. Make tables and plots to show the results and discuss them.
-
-```{r}
-
-```
-
-12. Set the neighborhood size to 20 (k=20) for scaled exponential euclidean distance, SNF and NEMO
 
 ```{r}
 
