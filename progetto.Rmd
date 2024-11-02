@@ -236,6 +236,8 @@ d.  [GROUP] Integrated matrix obtained using NEMO. Use dist \<- 1 -
     NetPreProc::Max.Min.norm(W) to compute the distance matrix.
 
 ```{r}
+clustering_names <- list();
+
 #Get the number of clusters for PAM equal to the number of unique subtypes
 n_of_clusters <- length(unique(subtypes$Subtype_Selected))
 
@@ -251,19 +253,24 @@ pam_results <- list();
 pam_next_count <- 1;
 for(i in 1:length(W_list)) {
   pam_results[[pam_next_count]] <- PAM.compute(W_list[[i]], n_of_clusters)
+  clustering_names[[pam_next_count]] <- paste("PAM", names(complete)[[i]])
   pam_next_count <- pam_next_count + 1;
 }
 
 # PAM clustering for average matrix of the assays
 pam_results[[pam_next_count]] <- PAM.compute(W_averages, n_of_clusters)
+clustering_names[[pam_next_count]] <- "PAM average integration"
 pam_next_count <- pam_next_count + 1;
 
 # PAM clustering of the SNF integration matrix
 pam_results[[pam_next_count]] <- PAM.compute(W_int, n_of_clusters)
+clustering_names[[pam_next_count]] <- "PAM SNF integration"
 pam_next_count <- pam_next_count + 1;
 
 # PAM clustering of the NEMO affinity matrix
 pam_results[[pam_next_count]] <- PAM.compute(W_NEMO, n_of_clusters)
+clustering_names[[pam_next_count]] <- "PAM NEMO integration"
+pam_next_count <- pam_next_count + 1
 ```
 
 9.  [GROUP] NEMO provides the possibility of performing clustering using
@@ -272,7 +279,8 @@ pam_results[[pam_next_count]] <- PAM.compute(W_NEMO, n_of_clusters)
 
 ```{r}
 NEMO_spectral_clustering = spectralClustering(W_NEMO, n_of_clusters)
-names(NEMO_spectral_clustering) = colnames(W_NEMO)
+clustering_names[[pam_next_count]] <- "Spectral NEMO integration"
+pam_next_count <- pam_next_count + 1
 ```
 
 10. [OPTIONAL] Apply Spectral Clustering on the integrated matrix
@@ -282,6 +290,8 @@ names(NEMO_spectral_clustering) = colnames(W_NEMO)
 
 ```{r}
 SNF_spectral_clustering <- SNFtool::spectralClustering(W_int, K=n_of_clusters)
+clustering_names[[pam_next_count]] <- "Spectral SNF integration"
+pam_next_count <- pam_next_count + 1
 ```
 
 11. Compare the clusterings obtained by each considered approach w.r.t.
@@ -289,5 +299,49 @@ SNF_spectral_clustering <- SNFtool::spectralClustering(W_int, K=n_of_clusters)
     results and discuss them.
 
 ```{r}
+# Covert disease subtypes to numeric vector:
+labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
 
+# Compute measures:
+types <- c("rand", "adjrand", "nmi1");
+metrics <- list();
+counter <- 1;
+for (i in 1:length(pam_results)) {
+  metrics[[i]] <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
+  counter <- i;
+}
+
+counter <- counter + 1;
+metrics[[counter]] <- mclustcomp(NEMO_spectral_clustering, labels, types=types)
+
+counter <- counter + 1;
+metrics[[counter]] <- mclustcomp(SNF_spectral_clustering, labels, types=types)
+
+names(metrics) <- clustering_names;
+
+
+# Print results:
+clean_name <- function(text) {
+  substrings_to_remove <- c(".scores1", ".scores2", ".scores3")
+
+  # Create a regex pattern by pasting the substrings together
+  pattern <- paste(substrings_to_remove, collapse = "|")
+  
+  # Remove the substrings from the string
+  gsub(pattern, "", text)
+}
+df_metrics <- as.data.frame(metrics);
+
+df <- data.frame(
+  value = unlist(df_metrics[, seq(2, ncol(df_metrics), by = 2)]),
+  class = sapply(names(unlist(df_metrics[, seq(2, ncol(df_metrics), by = 2)])), clean_name)
+)
+
+df
+
+# Plot histogram with categories and classes
+ggplot(df, aes(x = value, fill = class)) +
+  geom_bar(position = "dodge") +  # Dodge separates the bars for each class
+  labs(x = "Metric", y = "Cluster similarity", fill = "Technique") +
+  theme_minimal()
 ```
