@@ -41,6 +41,13 @@ install.packages("NetPreProc");
 install.packages("caret");
 install.packages("cluster");
 install.packages("mclustcomp");
+install.packages("mcclust");
+install.packages("yardstick");
+install.packages("dplyr");
+install.packages("funtimes");
+install.packages("clevr");
+install.packages("mlr3measures");
+
 
 install.packages("devtools")
 devtools::install_github('Shamir-Lab/NEMO/NEMO');
@@ -55,7 +62,13 @@ library("caret");
 library("cluster"); #pam
 library("SNFtool");
 library("mclustcomp");
-library("NEMO")
+library("mcclust");
+library("NEMO");
+library("yardstick");
+library("dplyr");
+library("funtimes");
+library("clevr");
+library("mlr3measures");
 ```
 
 ```{r}
@@ -299,27 +312,76 @@ pam_next_count <- pam_next_count + 1
     results and discuss them.
 
 ```{r}
-# Covert disease subtypes to numeric vector:
-labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
-
-# Compute measures:
-types <- c("rand", "adjrand", "nmi1");
-metrics <- list();
-counter <- 1;
-for (i in 1:length(pam_results)) {
-  metrics[[i]] <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
-  counter <- i;
+#for jaccard i tried to calculate it manually or by using the ml3measures library, in both cases it returns the same value
+#we need to understand why and if the metric is actually necessary.
+jaccard <- function(truth, prediction) {
+  intersection <- length(intersect(truth, prediction))
+  union <- length(truth) + length(prediction) - intersection
+  intersection / union
 }
 
-counter <- counter + 1;
-metrics[[counter]] <- mclustcomp(NEMO_spectral_clustering, labels, types=types)
-
-counter <- counter + 1;
-metrics[[counter]] <- mclustcomp(SNF_spectral_clustering, labels, types=types)
-
-names(metrics) <- clustering_names;
+#Fowlkes-Mallows index
+FMI <- function(precision, recall) { sqrt(precision * recall) }
 
 
+# Covert disease subtypes to numeric vector:
+labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
+truth <- factor(labels, levels=sort(unique(labels)));
+compute_metrics <- function(prediction) {
+  metrics_row <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
+  
+  df <- tibble(actual = truth, predicted = prediction)
+  precision <- yardstick::precision(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
+  recall <- yardstick::recall(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
+  
+  #accuracy, bal_acc_macro, precision, recall, F1, rand_index, adj_rand_index, nmi, purity, mvi, v_measure, jaccard, FMI
+  c(yardstick::accuracy(df, truth=actual, estimate=predicted, estimator="macro")$.estimate,
+    yardstick::bal_accuracy(df, truth=actual, estimate=predicted, estimator="macro")$.estimate,
+    precision,
+    recall,
+    yardstick::f_meas(df, truth=actual, estimate=predicted, estimator="macro", beta=1)$.estimate,
+    FMI(precision, recall),
+    metrics_row$scores[3], 
+    metrics_row$scores[1], 
+    metrics_row$scores[2], 
+    funtimes::purity(truth, prediction)$pur, 
+    mcclust::vi.dist(truth, prediction), 
+    clevr::v_measure(truth, prediction),
+    mlr3measures::jaccard(list(as.integer(truth), as.integer(prediction))))
+}
+
+#the micro_average metrics are all equals because of the symmetry of the confusion matrix and they are equal to the macro_accuracy
+metrics <- matrix(ncol = 13, nrow = 0)
+colnames(metrics) <- c("accuracy", "bal_accuracy_macro", "precision", "recall", "f1", "FMI", "rand", "adjrand", "nmi1", "purity", "mvi", "v_measure", "jaccard")
+
+confusionMatrixes <- list();
+
+counter <- 1;
+for (i in 1:length(pam_results)) {
+  prediction <- factor(pam_results[[i]]$clustering, 
+                       levels=sort(unique(pam_results[[i]]$clustering)))
+  metrics <- rbind(metrics, compute_metrics(prediction))
+  confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+}
+
+# NEMO_spectral_clustering
+prediction <- factor(NEMO_spectral_clustering, 
+                       levels=sort(unique(NEMO_spectral_clustering)))
+metrics <- rbind(metrics, compute_metrics(prediction))
+confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+
+# SNF_spectral_clustering
+prediction <- factor(SNF_spectral_clustering, 
+                     levels=sort(unique(SNF_spectral_clustering)))
+metrics <- rbind(metrics, compute_metrics(prediction))
+confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+
+rownames(metrics) <- clustering_names;
+metrics
+
+```
+
+```{r}
 # Print results:
 clean_name <- function(text) {
   substrings_to_remove <- c(".scores1", ".scores2", ".scores3")
@@ -336,6 +398,7 @@ df <- data.frame(
   value = unlist(df_metrics[, seq(2, ncol(df_metrics), by = 2)]),
   class = sapply(names(unlist(df_metrics[, seq(2, ncol(df_metrics), by = 2)])), clean_name)
 )
+
 
 df
 
