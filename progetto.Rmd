@@ -401,10 +401,14 @@ long_data <- melt(metrics)
 colnames(long_data) <- c("Type", "Metric", "Value")
 
 # Create a histogram using ggplot
-ggplot(long_data, aes(x = Metric, y = Value, fill = Type)) +
+plot <- ggplot(long_data, aes(x = Metric, y = Value, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
   scale_fill_manual(values = rainbow(n = 8)) +  # Assign a different color for each type
   labs(x = "Metric", y = "Value", title = "Histogram of Metrics by Type") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  # Rotate x-axis labels
   theme(legend.title = element_blank())  # Remove the legend title
+
+print(plot)
+
+ggsave("larger_histogram.png", plot = plot, width = 12, height = 8, dpi = 300)
 ```
