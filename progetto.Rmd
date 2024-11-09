@@ -48,6 +48,9 @@ install.packages("funtimes");
 install.packages("clevr");
 install.packages("mlr3measures");
 
+install.packages("reshape2");
+install.packages("ggplot2")
+
 
 install.packages("devtools")
 devtools::install_github('Shamir-Lab/NEMO/NEMO');
@@ -69,6 +72,8 @@ library("dplyr");
 library("funtimes");
 library("clevr");
 library("mlr3measures");
+library("reshape2"); #graph
+library(ggplot2); #graph
 ```
 
 ```{r}
@@ -389,28 +394,17 @@ metrics
 
 ```{r}
 # Print results:
-clean_name <- function(text) {
-  substrings_to_remove <- c(".scores1", ".scores2", ".scores3")
+# Reshape the matrix into a long format for ggplot
+long_data <- melt(metrics)
 
-  # Create a regex pattern by pasting the substrings together
-  pattern <- paste(substrings_to_remove, collapse = "|")
-  
-  # Remove the substrings from the string
-  gsub(pattern, "", text)
-}
-df_metrics <- as.data.frame(metrics);
+# The 'Var1' column represents the type (rows) and 'Var2' represents the metric (columns)
+colnames(long_data) <- c("Type", "Metric", "Value")
 
-df <- data.frame(
-  value = unlist(df_metrics[, seq(2, ncol(df_metrics), by = 2)]),
-  class = sapply(names(unlist(df_metrics[, seq(2, ncol(df_metrics), by = 2)])), clean_name)
-)
-
-
-df
-
-# Plot histogram with categories and classes
-ggplot(df, aes(x = value, fill = class)) +
-  geom_bar(position = "dodge") +  # Dodge separates the bars for each class
-  labs(x = "Metric", y = "Cluster similarity", fill = "Technique") +
-  theme_minimal()
+# Create a histogram using ggplot
+ggplot(long_data, aes(x = Metric, y = Value, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = rainbow(n = 8)) +  # Assign a different color for each type
+  labs(x = "Metric", y = "Value", title = "Histogram of Metrics by Type") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  # Rotate x-axis labels
+  theme(legend.title = element_blank())  # Remove the legend title
 ```
