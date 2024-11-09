@@ -324,6 +324,7 @@ jaccard <- function(truth, prediction) {
 FMI <- function(precision, recall) { sqrt(precision * recall) }
 
 
+
 # Covert disease subtypes to numeric vector:
 labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
 truth <- factor(labels, levels=sort(unique(labels)));
@@ -377,6 +378,11 @@ metrics <- rbind(metrics, compute_metrics(prediction))
 confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
 
 rownames(metrics) <- clustering_names;
+
+#use min-max normalization to adjust MVI w.r.t. to the interval [0, log(n)]
+#then invert it in order to indicate that the if two clustering solutions are more similar the value is higher
+metrics[, "mvi"] <- 1 - (metrics[, "mvi"]) / (log(length(truth)))
+
 metrics
 
 ```
