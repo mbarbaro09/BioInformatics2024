@@ -46,7 +46,6 @@ install.packages("yardstick");
 install.packages("dplyr");
 install.packages("funtimes");
 install.packages("clevr");
-install.packages("mlr3measures");
 
 install.packages("reshape2");
 install.packages("ggplot2")
@@ -71,7 +70,6 @@ library("yardstick");
 library("dplyr");
 library("funtimes");
 library("clevr");
-library("mlr3measures");
 library("reshape2"); #graph
 library(ggplot2); #graph
 ```
@@ -226,7 +224,7 @@ W_averages <- Reduce(`+`, W_list) / length(W_list)
     (<https://github.com/ShamirLab/NEMO>).
 
 ```{r}
-#passiamo la trasposta ossia il dataset features x samples per calcolare la similarity matrix con NEMO
+#we use the transpose (dataset as features x samples) to compute the similarity matrix with NEMO
 W_NEMO = nemo.affinity.graph(lapply(complete, FUN=t), k = 20)
 ```
 
@@ -317,14 +315,6 @@ pam_next_count <- pam_next_count + 1
     results and discuss them.
 
 ```{r}
-#for jaccard i tried to calculate it manually or by using the ml3measures library, in both cases it returns the same value
-#we need to understand why and if the metric is actually necessary.
-jaccard <- function(truth, prediction) {
-  intersection <- length(intersect(truth, prediction))
-  union <- length(truth) + length(prediction) - intersection
-  intersection / union
-}
-
 #Fowlkes-Mallows index
 FMI <- function(precision, recall) { sqrt(precision * recall) }
 
@@ -340,7 +330,7 @@ compute_metrics <- function(prediction) {
   precision <- yardstick::precision(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
   recall <- yardstick::recall(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
   
-  #accuracy, bal_acc_macro, precision, recall, F1, rand_index, adj_rand_index, nmi, purity, mvi, v_measure, jaccard, FMI
+  #accuracy, bal_acc_macro, precision, recall, F1, FMI, rand_index, adj_rand_index, nmi, purity, mvi, v_measure
   c(yardstick::accuracy(df, truth=actual, estimate=predicted, estimator="macro")$.estimate,
     yardstick::bal_accuracy(df, truth=actual, estimate=predicted, estimator="macro")$.estimate,
     precision,
@@ -352,13 +342,12 @@ compute_metrics <- function(prediction) {
     metrics_row$scores[2], 
     funtimes::purity(truth, prediction)$pur, 
     mcclust::vi.dist(truth, prediction), 
-    clevr::v_measure(truth, prediction),
-    mlr3measures::jaccard(list(as.integer(truth), as.integer(prediction))))
+    clevr::v_measure(truth, prediction))
 }
 
 #the micro_average metrics are all equals because of the symmetry of the confusion matrix and they are equal to the macro_accuracy
-metrics <- matrix(ncol = 13, nrow = 0)
-colnames(metrics) <- c("accuracy", "bal_accuracy_macro", "precision", "recall", "f1", "FMI", "rand", "adjrand", "nmi1", "purity", "mvi", "v_measure", "jaccard")
+metrics <- matrix(ncol = 12, nrow = 0)
+colnames(metrics) <- c("accuracy", "bal_accuracy_macro", "precision", "recall", "f1", "FMI", "rand", "adjrand", "nmi1", "purity", "mvi", "v_measure")
 
 confusionMatrixes <- list();
 
@@ -401,9 +390,10 @@ long_data <- melt(metrics)
 colnames(long_data) <- c("Type", "Metric", "Value")
 
 # Create a histogram using ggplot
+colors <- palette("default")
 plot <- ggplot(long_data, aes(x = Metric, y = Value, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
-  scale_fill_manual(values = rainbow(n = 8)) +  # Assign a different color for each type
+  scale_color_manual(values = colors) + # Assign a different color for each type
   labs(x = "Metric", y = "Value", title = "Histogram of Metrics by Type") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  # Rotate x-axis labels
   theme(legend.title = element_blank())  # Remove the legend title
