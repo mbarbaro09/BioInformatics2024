@@ -113,13 +113,13 @@ complete <- intersectColumns(multi_omics_dataset);
 complete <- assays(complete);
 
 # Obtain matrices samples x features:
-#Transposes the matrix
+# Transposes the matrix
 complete <- lapply(complete, FUN=t)
 
 # Remove features having NAs (present only in proteomics data):
 complete[[3]] <- complete[[3]][, colSums(is.na(complete[[3]])) == 0];
 
-# Remove features with near zero variance and retain top 500 features 
+# Remove features with near zero variance and retain top 100 features 
 # having higher variance:
 features_threshold <- 100;
 for(i in 1:length(complete)){
