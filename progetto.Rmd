@@ -52,7 +52,6 @@ install.packages("ggplot2")
 
 
 install.packages("devtools")
-devtools::install_github('Shamir-Lab/NEMO/NEMO');
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -199,14 +198,14 @@ all(rownames(subtypes) == rownames(complete[[1]]))
 W_list <- list();
 for(i in 1:length(complete))
 {
-    distances_matrix <- (dist2(as.matrix(complete[[i]]), as.matrix(complete[[i]])))^(1/2);
-    W_list[[i]] <- affinityMatrix(distances_matrix);
+    distances_matrix <- (SNFtool::dist2(as.matrix(complete[[i]]), as.matrix(complete[[i]])))^(1/2);
+    W_list[[i]] <- SNFtool::affinityMatrix(distances_matrix);
 }
     
 # Integration of multi-omics data using Similarity Network Fusion:
 # t is the number of iterations and K is the number of neighbors to 
 # consider to compute the local similarity matrix:
-W_int <- SNF(W_list, K=20, t=20);
+W_int <- SNFtool::SNF(W_list, K=20, t=20);
 ```
 
 6.  Try to integrate the similarity matrices from each data source
@@ -225,7 +224,8 @@ W_averages <- Reduce(`+`, W_list) / length(W_list)
 
 ```{r}
 #we use the transpose (dataset as features x samples) to compute the similarity matrix with NEMO
-W_NEMO = nemo.affinity.graph(lapply(complete, FUN=t), k = 20)
+transposed <- lapply(complete, FUN=base::t)
+W_NEMO = NEMO::nemo.affinity.graph(raw.data = transposed, k = 20)
 ```
 
 8.  Perform disease subtype discovery (number of clusters equal to the
@@ -351,7 +351,6 @@ colnames(metrics) <- c("accuracy", "bal_accuracy_macro", "precision", "recall", 
 
 confusionMatrixes <- list();
 
-counter <- 1;
 for (i in 1:length(pam_results)) {
   prediction <- factor(pam_results[[i]]$clustering, 
                        levels=sort(unique(pam_results[[i]]$clustering)))
@@ -360,16 +359,18 @@ for (i in 1:length(pam_results)) {
 }
 
 # NEMO_spectral_clustering
+counter <- length(pam_results) + 1;
 prediction <- factor(NEMO_spectral_clustering, 
                        levels=sort(unique(NEMO_spectral_clustering)))
 metrics <- rbind(metrics, compute_metrics(prediction))
-confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+confusionMatrixes[[counter]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
 
 # SNF_spectral_clustering
+counter <- counter + 1;
 prediction <- factor(SNF_spectral_clustering, 
                      levels=sort(unique(SNF_spectral_clustering)))
 metrics <- rbind(metrics, compute_metrics(prediction))
-confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+confusionMatrixes[[counter]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
 
 rownames(metrics) <- clustering_names;
 
