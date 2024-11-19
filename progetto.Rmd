@@ -29,12 +29,16 @@ levels) and discovered three disease subtypes.
     data). The TCGA code for the dataset is “PRAD”.
 
 ```{r}
+
+install.packages("httr2"); #needed for TCGAbiolinks
+
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 BiocManager::install("curatedTCGAData");
 BiocManager::install("TCGAbiolinks");
 BiocManager::install("TCGAutils");
+BiocManager::install("graph"); #needed for NetPreProc
 
 install.packages("SNFtool");
 install.packages("NetPreProc");
@@ -323,10 +327,10 @@ FMI <- function(precision, recall) { sqrt(precision * recall) }
 # Covert disease subtypes to numeric vector:
 labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
 truth <- factor(labels, levels=sort(unique(labels)));
-compute_metrics <- function(prediction) {
+types <- c("rand", "adjrand", "nmi1");
+compute_metrics <- function(prediction, df) {
   metrics_row <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
   
-  df <- tibble(actual = truth, predicted = prediction)
   precision <- yardstick::precision(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
   recall <- yardstick::recall(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
   
@@ -354,7 +358,8 @@ confusionMatrixes <- list();
 for (i in 1:length(pam_results)) {
   prediction <- factor(pam_results[[i]]$clustering, 
                        levels=sort(unique(pam_results[[i]]$clustering)))
-  metrics <- rbind(metrics, compute_metrics(prediction))
+  df <- tibble(actual = truth, predicted = prediction)
+  metrics <- rbind(metrics, compute_metrics(prediction, df))
   confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
 }
 
@@ -362,14 +367,16 @@ for (i in 1:length(pam_results)) {
 counter <- length(pam_results) + 1;
 prediction <- factor(NEMO_spectral_clustering, 
                        levels=sort(unique(NEMO_spectral_clustering)))
-metrics <- rbind(metrics, compute_metrics(prediction))
+df <- tibble(actual = truth, predicted = prediction)
+metrics <- rbind(metrics, compute_metrics(prediction, df))
 confusionMatrixes[[counter]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
 
 # SNF_spectral_clustering
 counter <- counter + 1;
 prediction <- factor(SNF_spectral_clustering, 
                      levels=sort(unique(SNF_spectral_clustering)))
-metrics <- rbind(metrics, compute_metrics(prediction))
+df <- tibble(actual = truth, predicted = prediction)
+metrics <- rbind(metrics, compute_metrics(prediction, df))
 confusionMatrixes[[counter]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
 
 rownames(metrics) <- clustering_names;
