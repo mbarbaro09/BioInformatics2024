@@ -322,19 +322,19 @@ pam_next_count <- pam_next_count + 1
 # Covert disease subtypes to numeric vector:
 labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
 reference <- factor(labels, levels=sort(unique(labels)));
-types <- c("rand", "adjrand", "nmi1", "fmi", "jaccard");
+types <- c("rand", "adjrand", "nmi1", "fmi", "jaccard", "mhm");
 
 compute_metrics <- function(prediction) {
   metrics_row <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
   
   #FMI, rand_index, adj_rand_index, nmi, jaccard, purity, mvi
   c(metrics_row$scores[2],
-    metrics_row$scores[5], 
+    metrics_row$scores[6], 
     metrics_row$scores[1], 
-    metrics_row$scores[4],
+    metrics_row$scores[5],
     metrics_row$scores[3],
-    funtimes::purity(reference, prediction)$pur, 
-    mcclust::vi.dist(reference, prediction))
+    funtimes::purity(reference, prediction)$pur,
+    metrics_row$scores[4])
 }
 
 metrics <- matrix(ncol = 7, nrow = 0)
@@ -362,7 +362,7 @@ rownames(metrics) <- clustering_names;
 
 #use min-max normalization to adjust MVI w.r.t. to the interval [0, log(n)]
 #then invert it in order to indicate that the if two clustering solutions are more similar the value is higher
-metrics[, "mvi"] <- 1 - (metrics[, "mvi"]) / (log(length(reference)))
+#metrics[, "mvi"] <- 1 - (metrics[, "mvi"]) / (log(length(reference)))
 
 metrics
 
