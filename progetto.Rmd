@@ -273,7 +273,7 @@ pam_results <- list();
 pam_next_count <- 1;
 for(i in 1:length(W_list)) {
   pam_results[[pam_next_count]] <- PAM.compute(W_list[[i]], n_of_clusters)
-  clustering_names[[pam_next_count]] <- paste("PAM", names(complete)[[i]])
+  clustering_names[[pam_next_count]] <- paste("PAM", sub("-.*", "", names(complete)[[i]]))
   pam_next_count <- pam_next_count + 1;
 }
 
@@ -319,71 +319,50 @@ pam_next_count <- pam_next_count + 1
     results and discuss them.
 
 ```{r}
-#Fowlkes-Mallows index
-FMI <- function(precision, recall) { sqrt(precision * recall) }
-
-
-
 # Covert disease subtypes to numeric vector:
 labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
-truth <- factor(labels, levels=sort(unique(labels)));
-types <- c("rand", "adjrand", "nmi1");
-compute_metrics <- function(prediction, df) {
+reference <- factor(labels, levels=sort(unique(labels)));
+types <- c("rand", "adjrand", "nmi1", "fmi", "jaccard");
+
+compute_metrics <- function(prediction) {
   metrics_row <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
   
-  precision <- yardstick::precision(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
-  recall <- yardstick::recall(df, truth=actual, estimate=predicted, estimator="macro")$.estimate
-  
-  #accuracy, bal_acc_macro, precision, recall, F1, FMI, rand_index, adj_rand_index, nmi, purity, mvi, v_measure
-  c(yardstick::accuracy(df, truth=actual, estimate=predicted, estimator="macro")$.estimate,
-    yardstick::bal_accuracy(df, truth=actual, estimate=predicted, estimator="macro")$.estimate,
-    precision,
-    recall,
-    yardstick::f_meas(df, truth=actual, estimate=predicted, estimator="macro", beta=1)$.estimate,
-    FMI(precision, recall),
-    metrics_row$scores[3], 
+  #FMI, rand_index, adj_rand_index, nmi, jaccard, purity, mvi
+  c(metrics_row$scores[2],
+    metrics_row$scores[5], 
     metrics_row$scores[1], 
-    metrics_row$scores[2], 
-    funtimes::purity(truth, prediction)$pur, 
-    mcclust::vi.dist(truth, prediction), 
-    clevr::v_measure(truth, prediction))
+    metrics_row$scores[4],
+    metrics_row$scores[3],
+    funtimes::purity(reference, prediction)$pur, 
+    mcclust::vi.dist(reference, prediction))
 }
 
-#the micro_average metrics are all equals because of the symmetry of the confusion matrix and they are equal to the macro_accuracy
-metrics <- matrix(ncol = 12, nrow = 0)
-colnames(metrics) <- c("accuracy", "bal_accuracy_macro", "precision", "recall", "f1", "FMI", "rand", "adjrand", "nmi1", "purity", "mvi", "v_measure")
-
-confusionMatrixes <- list();
+metrics <- matrix(ncol = 7, nrow = 0)
+colnames(metrics) <- c("FMI", "rand", "adjrand", "nmi1", "jaccard", "purity", "mvi")
 
 for (i in 1:length(pam_results)) {
   prediction <- factor(pam_results[[i]]$clustering, 
                        levels=sort(unique(pam_results[[i]]$clustering)))
-  df <- tibble(actual = truth, predicted = prediction)
-  metrics <- rbind(metrics, compute_metrics(prediction, df))
-  confusionMatrixes[[i]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+  metrics <- rbind(metrics, compute_metrics(prediction))
 }
 
 # NEMO_spectral_clustering
 counter <- length(pam_results) + 1;
 prediction <- factor(NEMO_spectral_clustering, 
                        levels=sort(unique(NEMO_spectral_clustering)))
-df <- tibble(actual = truth, predicted = prediction)
-metrics <- rbind(metrics, compute_metrics(prediction, df))
-confusionMatrixes[[counter]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+metrics <- rbind(metrics, compute_metrics(prediction))
 
 # SNF_spectral_clustering
 counter <- counter + 1;
 prediction <- factor(SNF_spectral_clustering, 
                      levels=sort(unique(SNF_spectral_clustering)))
-df <- tibble(actual = truth, predicted = prediction)
-metrics <- rbind(metrics, compute_metrics(prediction, df))
-confusionMatrixes[[counter]] <- yardstick::conf_mat(df, truth=actual, estimate=predicted);
+metrics <- rbind(metrics, compute_metrics(prediction))
 
 rownames(metrics) <- clustering_names;
 
 #use min-max normalization to adjust MVI w.r.t. to the interval [0, log(n)]
 #then invert it in order to indicate that the if two clustering solutions are more similar the value is higher
-metrics[, "mvi"] <- 1 - (metrics[, "mvi"]) / (log(length(truth)))
+metrics[, "mvi"] <- 1 - (metrics[, "mvi"]) / (log(length(reference)))
 
 metrics
 
