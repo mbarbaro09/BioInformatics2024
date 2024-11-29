@@ -52,8 +52,9 @@ install.packages("funtimes");
 install.packages("clevr");
 
 install.packages("reshape2");
-install.packages("ggplot2")
-
+install.packages("ggplot2");
+install.packages("gt"); #to build rendered tables
+install.packages("pagedown"); #to export tables in pdf
 
 install.packages("devtools")
 ```
@@ -74,7 +75,9 @@ library("dplyr");
 library("funtimes");
 library("clevr");
 library("reshape2"); #graph
-library(ggplot2); #graph
+library("ggplot2"); #graph
+library("gt");
+library("pagedown");
 ```
 
 ```{r}
@@ -319,13 +322,15 @@ pam_next_count <- pam_next_count + 1
     results and discuss them.
 
 ```{r}
-# Covert disease subtypes to numeric vector:
+#External Measures
+
+# Convert disease subtypes to numeric vector:
 labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
 reference <- factor(labels, levels=sort(unique(labels)));
 types <- c("rand", "adjrand", "nmi1", "fmi", "jaccard", "mhm");
 
 compute_metrics <- function(prediction) {
-  metrics_row <- mclustcomp(pam_results[[i]]$clustering, labels, types=types);
+  metrics_row <- mclustcomp(as.vector(prediction), labels, types=types);
   
   #FMI, rand_index, adj_rand_index, nmi, jaccard, purity, mvi
   c(metrics_row$scores[2],
@@ -360,10 +365,6 @@ metrics <- rbind(metrics, compute_metrics(prediction))
 
 rownames(metrics) <- clustering_names;
 
-#use min-max normalization to adjust MVI w.r.t. to the interval [0, log(n)]
-#then invert it in order to indicate that the if two clustering solutions are more similar the value is higher
-#metrics[, "mvi"] <- 1 - (metrics[, "mvi"]) / (log(length(reference)))
-
 metrics
 
 ```
@@ -387,5 +388,74 @@ plot <- ggplot(long_data, aes(x = Metric, y = Value, fill = Type)) +
 
 print(plot)
 
-ggsave("larger_histogram.png", plot = plot, width = 12, height = 8, dpi = 300)
+ggsave("larger_histogram.pdf", plot = plot, width = 12, height = 8, dpi = 300, device = "pdf")
+```
+
+```{r}
+#Internal measures
+
+internal_metrics <- matrix(ncol = 1, nrow = 0)
+colnames(internal_metrics) <- c("Average Silhouette Width")
+
+for(i in 1:3) {
+  internal_metrics <- rbind(internal_metrics, 
+                            c(summary(silhouette(pam_results[[i]], as.dist(1-W_list[[i]])))$avg.width))
+}
+
+internal_metrics <- rbind(internal_metrics, 
+                          c(summary(silhouette(pam_results[[4]], as.dist(1-W_averages)))$avg.width))
+internal_metrics <- rbind(internal_metrics, 
+                          c(summary(silhouette(pam_results[[5]], as.dist(1-W_int)))$avg.width))
+internal_metrics <- rbind(internal_metrics, 
+                          c(summary(silhouette(pam_results[[6]], as.dist(1-W_NEMO)))$avg.width))
+internal_metrics <- rbind(internal_metrics, 
+                          c(summary(silhouette(NEMO_spectral_clustering, as.dist(1-W_NEMO)))$avg.width))
+internal_metrics <- rbind(internal_metrics, 
+                          c(summary(silhouette(SNF_spectral_clustering, as.dist(1-W_int)))$avg.width))
+
+rownames(internal_metrics) <- clustering_names
+
+internal_metrics
+```
+
+```{r}
+internal_metrics[,1] <- sapply(internal_metrics[,1], round, digits = 3) 
+metrics[,] <- sapply(metrics[,], round, digits = 4) 
+
+save_table <- function(data, columns, filename) {
+  df_data <- as.data.frame(data)
+  df_data <- cbind("Clustering Method" = rownames(data), df_data)
+
+  gt_table <- gt(df_data) %>%
+    tab_header(
+      title = "Internal Cluster validation measures Table"
+    ) %>%
+    tab_style(
+      style = cell_borders(sides = c("left", "right"), color = "lightgray", weight = px(2)),
+      locations = list(
+        cells_body(columns = everything()),  # Add borders to all columns
+        cells_column_labels(columns = everything())  # Add borders to header
+      )
+    ) %>%
+    tab_style(
+      style = cell_text(weight = "bold"),  # Make column headers italic
+      locations = cells_column_labels(everything())
+    ) %>%
+    tab_style(
+      style = cell_text(align = "center"),  # Center the content of the second column
+      locations = cells_body(columns = 2:columns)
+    ) %>%
+    tab_options(
+      table.border.top.color = "transparent"  # Remove the horizontal line above the title
+    )
+  
+  gt_table %>%
+    gtsave(paste0(filename, ".html"))
+  
+  chrome_print(paste0(filename, ".html"), output = paste0(filename, ".pdf"))
+  unlink(paste0(filename, ".html"))
+}
+
+save_table(internal_metrics, 2, "internal_metrics_table")
+save_table(metrics, 8, "external_metrics_table")
 ```
