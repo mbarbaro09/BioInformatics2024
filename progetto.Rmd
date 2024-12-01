@@ -202,17 +202,17 @@ all(rownames(subtypes) == rownames(complete[[1]]))
 ```{r}
 # Compute similarity matrix for each data source using the scaled
 # exponential euclidean distance:
-W_list <- list();
+W_omics <- list();
 for(i in 1:length(complete))
 {
     distances_matrix <- (SNFtool::dist2(as.matrix(complete[[i]]), as.matrix(complete[[i]])))^(1/2);
-    W_list[[i]] <- SNFtool::affinityMatrix(distances_matrix);
+    W_omics[[i]] <- SNFtool::affinityMatrix(distances_matrix);
 }
     
 # Integration of multi-omics data using Similarity Network Fusion:
 # t is the number of iterations and K is the number of neighbors to 
 # consider to compute the local similarity matrix:
-W_int <- SNFtool::SNF(W_list, K=20, t=20);
+W_SNF <- SNFtool::SNF(W_omics, K=20, t=20);
 ```
 
 6.  Try to integrate the similarity matrices from each data source
@@ -221,7 +221,7 @@ W_int <- SNFtool::SNF(W_list, K=20, t=20);
     multi-omics data integration strategy.
 
 ```{r}
-W_averages <- Reduce(`+`, W_list) / length(W_list)
+W_AVG <- Reduce(`+`, W_omics) / length(W_omics)
 ```
 
 7.  [GROUP] Integrate the dataset using another data fusion method
@@ -274,19 +274,19 @@ PAM.compute <- function(similarity_matrix, k) {
 # PAM clustering for each assay
 pam_results <- list();
 pam_next_count <- 1;
-for(i in 1:length(W_list)) {
-  pam_results[[pam_next_count]] <- PAM.compute(W_list[[i]], n_of_clusters)
-  clustering_names[[pam_next_count]] <- paste("PAM", sub("-.*", "", names(complete)[[i]]))
+for(i in 1:length(W_omics)) {
+  pam_results[[pam_next_count]] <- PAM.compute(W_omics[[i]], n_of_clusters)
   pam_next_count <- pam_next_count + 1;
 }
+clustering_names[1:length(W_omics)] <- c("PAM miRNA data", "PAM mRNA data", "PAM Protein expression data")
 
 # PAM clustering for average matrix of the assays
-pam_results[[pam_next_count]] <- PAM.compute(W_averages, n_of_clusters)
-clustering_names[[pam_next_count]] <- "PAM average integration"
+pam_results[[pam_next_count]] <- PAM.compute(W_AVG, n_of_clusters)
+clustering_names[[pam_next_count]] <- "PAM AVG integration"
 pam_next_count <- pam_next_count + 1;
 
 # PAM clustering of the SNF integration matrix
-pam_results[[pam_next_count]] <- PAM.compute(W_int, n_of_clusters)
+pam_results[[pam_next_count]] <- PAM.compute(W_SNF, n_of_clusters)
 clustering_names[[pam_next_count]] <- "PAM SNF integration"
 pam_next_count <- pam_next_count + 1;
 
@@ -312,7 +312,7 @@ pam_next_count <- pam_next_count + 1
     same exploited in nemo.clustering()).
 
 ```{r}
-SNF_spectral_clustering <- SNFtool::spectralClustering(W_int, K=n_of_clusters)
+SNF_spectral_clustering <- SNFtool::spectralClustering(W_SNF, K=n_of_clusters)
 clustering_names[[pam_next_count]] <- "Spectral SNF integration"
 pam_next_count <- pam_next_count + 1
 ```
@@ -322,28 +322,28 @@ pam_next_count <- pam_next_count + 1
     results and discuss them.
 
 ```{r}
-#External Measures
+#External metrics
 
 # Convert disease subtypes to numeric vector:
 labels <- as.numeric(factor(subtypes$Subtype_Selected, levels=unique(subtypes$Subtype_Selected)));
 reference <- factor(labels, levels=sort(unique(labels)));
-types <- c("rand", "adjrand", "nmi1", "fmi", "jaccard", "mhm");
+types <- c("rand", "adjrand", "nmi1", "fmi", "jaccard", "vi");
 
 compute_metrics <- function(prediction) {
   metrics_row <- mclustcomp(as.vector(prediction), labels, types=types);
   
-  #FMI, rand_index, adj_rand_index, nmi, jaccard, purity, mvi
+  #FMI, rand_index, adj_rand_index, nmi, jaccard, purity, VI
   c(metrics_row$scores[2],
-    metrics_row$scores[6], 
+    metrics_row$scores[5], 
     metrics_row$scores[1], 
-    metrics_row$scores[5],
+    metrics_row$scores[4],
     metrics_row$scores[3],
     funtimes::purity(reference, prediction)$pur,
-    metrics_row$scores[4])
+    metrics_row$scores[6])
 }
 
 metrics <- matrix(ncol = 7, nrow = 0)
-colnames(metrics) <- c("FMI", "rand", "adjrand", "nmi1", "jaccard", "purity", "mvi")
+colnames(metrics) <- c("FMI", "rand", "adjrand", "nmi1", "jaccard", "purity", "VI")
 
 for (i in 1:length(pam_results)) {
   prediction <- factor(pam_results[[i]]$clustering, 
@@ -365,6 +365,10 @@ metrics <- rbind(metrics, compute_metrics(prediction))
 
 rownames(metrics) <- clustering_names;
 
+#use min-max normalization to adjust VI w.r.t. to the interval [0, log(n)]
+#then invert it in order to indicate that the if two clustering solutions are more similar the value is higher
+metrics[, "VI"] <- 1 - (metrics[, "VI"]) / (log(length(reference)))
+
 metrics
 
 ```
@@ -382,7 +386,7 @@ colors <- palette("default")
 plot <- ggplot(long_data, aes(x = Metric, y = Value, fill = Type)) +
   geom_bar(stat = "identity", position = "dodge") +
   scale_color_manual(values = colors) + # Assign a different color for each type
-  labs(x = "Metric", y = "Value", title = "Histogram of Metrics by Type") +
+  labs(x = "Metric", y = "Value", title = "External cluster validation metrics") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +  # Rotate x-axis labels
   theme(legend.title = element_blank())  # Remove the legend title
 
@@ -392,26 +396,30 @@ ggsave("larger_histogram.pdf", plot = plot, width = 12, height = 8, dpi = 300, d
 ```
 
 ```{r}
-#Internal measures
+#Internal metrics
 
-internal_metrics <- matrix(ncol = 1, nrow = 0)
-colnames(internal_metrics) <- c("Average Silhouette Width")
+internal_metrics <- matrix(ncol = 2, nrow = 0)
+colnames(internal_metrics) <- c("Mean individual widths", "Mean Clusters widths means")
 
 for(i in 1:3) {
-  internal_metrics <- rbind(internal_metrics, 
-                            c(summary(silhouette(pam_results[[i]], as.dist(1-W_list[[i]])))$avg.width))
+  summary <- summary(silhouette(pam_results[[i]], as.dist(1-W_omics[[i]])))
+  internal_metrics <- rbind(internal_metrics, c(summary$avg.width, mean(summary$clus.avg.width)))
 }
 
-internal_metrics <- rbind(internal_metrics, 
-                          c(summary(silhouette(pam_results[[4]], as.dist(1-W_averages)))$avg.width))
-internal_metrics <- rbind(internal_metrics, 
-                          c(summary(silhouette(pam_results[[5]], as.dist(1-W_int)))$avg.width))
-internal_metrics <- rbind(internal_metrics, 
-                          c(summary(silhouette(pam_results[[6]], as.dist(1-W_NEMO)))$avg.width))
-internal_metrics <- rbind(internal_metrics, 
-                          c(summary(silhouette(NEMO_spectral_clustering, as.dist(1-W_NEMO)))$avg.width))
-internal_metrics <- rbind(internal_metrics, 
-                          c(summary(silhouette(SNF_spectral_clustering, as.dist(1-W_int)))$avg.width))
+summary <- summary(silhouette(pam_results[[4]], as.dist(1-W_AVG)))
+internal_metrics <- rbind(internal_metrics, c(summary$avg.width, mean(summary$clus.avg.width)))
+
+summary <- summary(silhouette(pam_results[[5]], as.dist(1-W_SNF)))
+internal_metrics <- rbind(internal_metrics, c(summary$avg.width, mean(summary$clus.avg.width)))
+
+summary <- summary(silhouette(pam_results[[6]], as.dist(1-W_NEMO)))
+internal_metrics <- rbind(internal_metrics, c(summary$avg.width, mean(summary$clus.avg.width)))
+
+summary <- summary(silhouette(NEMO_spectral_clustering, as.dist(1-W_NEMO)))
+internal_metrics <- rbind(internal_metrics, c(summary$avg.width, mean(summary$clus.avg.width)))
+
+summary <- summary(silhouette(SNF_spectral_clustering, as.dist(1-W_SNF)))
+internal_metrics <- rbind(internal_metrics, c(summary$avg.width, mean(summary$clus.avg.width)))
 
 rownames(internal_metrics) <- clustering_names
 
@@ -419,16 +427,16 @@ internal_metrics
 ```
 
 ```{r}
-internal_metrics[,1] <- sapply(internal_metrics[,1], round, digits = 3) 
+internal_metrics[,] <- sapply(internal_metrics[,], round, digits = 4) 
 metrics[,] <- sapply(metrics[,], round, digits = 4) 
 
-save_table <- function(data, columns, filename) {
+save_table <- function(data, columns, filename, title) {
   df_data <- as.data.frame(data)
   df_data <- cbind("Clustering Method" = rownames(data), df_data)
 
   gt_table <- gt(df_data) %>%
     tab_header(
-      title = "Internal Cluster validation measures Table"
+      title = title
     ) %>%
     tab_style(
       style = cell_borders(sides = c("left", "right"), color = "lightgray", weight = px(2)),
@@ -456,6 +464,6 @@ save_table <- function(data, columns, filename) {
   unlink(paste0(filename, ".html"))
 }
 
-save_table(internal_metrics, 2, "internal_metrics_table")
-save_table(metrics, 8, "external_metrics_table")
+save_table(internal_metrics, 3, "internal_metrics_table", "Internal Cluster validation metrics")
+save_table(metrics, 8, "external_metrics_table", "External Cluster validation metrics")
 ```
